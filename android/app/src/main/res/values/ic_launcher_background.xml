@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 图标底色。跟页面底 #F7F0E6 是两回事：桌面上纯白更干净，
+         想让图标和 App 内保持一套色，把这里改成 #F7F0E6 即可 -->
+    <color name="ic_launcher_background">#FFFFFF</color>
+</resources>

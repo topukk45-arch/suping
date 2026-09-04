@@ -1,0 +1,9 @@
+{
+  "appId": "com.baofu.suping",
+  "appName": "素屏",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#F7F0E6"
+  }
+}

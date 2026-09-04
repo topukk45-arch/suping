@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">素屏</string>
+    <string name="title_activity_main">素屏</string>
+    <string name="package_name">com.baofu.suping</string>
+    <string name="custom_url_scheme">com.baofu.suping</string>
+</resources>
