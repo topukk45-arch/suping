@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorPrimary">#F7F0E6</color>
+    <color name="colorPrimaryDark">#EFE6D4</color>
+    <color name="colorAccent">#5E5546</color>
+    <!-- 启动窗口底色。必须和网页里的页面底色保持一致，否则启动过程会闪色。
+         同名的值在 MainActivity 的 BG 常量和 capacitor.config.json 里各有一份。 -->
+    <color name="appWindowBackground">#F7F0E6</color>
+</resources>
