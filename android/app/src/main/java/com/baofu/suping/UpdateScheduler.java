@@ -14,6 +14,16 @@ public class UpdateScheduler {
     private static final String PERIODIC_WORK_NAME = "DailyWallpaperUpdate";
     private static final String ONE_TIME_WORK_NAME = "CheckNowWallpaperUpdate";
 
+    /**
+     * 供 App、BootReceiver 和 WallpaperPlugin 调用的同步入口
+     */
+    public static void sync(Context context) {
+        // 注册周期性定时任务（KEEP 策略保证不会重复创建）
+        schedulePeriodic(context);
+        // 如需在启动/开机时立即触发一次检查，可按需取消下行注释
+        // checkNow(context);
+    }
+
     public static void schedulePeriodic(Context context) {
         Constraints constraints = new Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
