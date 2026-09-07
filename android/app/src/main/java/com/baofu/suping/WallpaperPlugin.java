@@ -24,10 +24,13 @@ import java.io.File;
  * SharedPreferences 和转发调用。SharedPreferences 是两层之间的唯一真相源。
  *
  * JS 侧用法：
- *   getState()                      -> { autoEnabled, target, lastTitle, lastTime, imagePath, lastError }
+ *   getState()                      -> { autoEnabled, target, lastTitle, lastTime,
+ *                                       lastId, pinDay, imagePath, lastError }
  *   getRecent()                     -> { imgHost, imgSuffix, images:[{id,urlbase,title,date}], cached }
  *   setConfig({autoEnabled, target})
  *   updateNow({force})              -> { ok, changed, title, homeOk, lockOk, error }
+ *   setSpecific({urlbase,id,title,dayId})
+ *                                   -> 同上。把往期某一张设成壁纸，并固定到今天
  *   openPowerSettings()             -> 跳转系统电池优化白名单页
  *   openAppSettings()               -> 跳转本应用详情页（自启动管理入口在这里面）
  */
@@ -53,6 +56,8 @@ public class WallpaperPlugin extends Plugin {
         ret.put("lastTitle",   sp.getString(WallpaperUpdater.KEY_LAST_TITLE, ""));
         ret.put("lastTime",    sp.getLong(WallpaperUpdater.KEY_LAST_TIME, 0));
         ret.put("lastError",   sp.getString(WallpaperUpdater.KEY_LAST_ERROR, ""));
+        // 非空表示用户挑了往期图固定在今天。网页层拿它显示「明天恢复自动更换」的提示
+        ret.put("pinDay",      sp.getString(WallpaperUpdater.KEY_PIN_DAY, ""));
         // 返回绝对路径，JS 侧要用 Capacitor.convertFileSrc() 转成 capacitor:// 才能加载。
         // 直接写 <img src="file:///data/..."> 在 WebView 里是加载不出来的。
         ret.put("imagePath",   img.exists() ? img.getAbsolutePath() : "");
@@ -158,6 +163,35 @@ public class WallpaperPlugin extends Plugin {
         // Capacitor 的插件方法在主线程被调用，网络请求必须自己开线程
         new Thread(() -> {
             WallpaperUpdater.Result r = WallpaperUpdater.runOnce(app, force);
+            JSObject ret = new JSObject();
+            ret.put("ok", r.ok);
+            ret.put("changed", r.changed);
+            ret.put("title", r.title == null ? "" : r.title);
+            ret.put("homeOk", r.homeOk);
+            ret.put("lockOk", r.lockOk);
+            ret.put("error", r.error == null ? "" : r.error);
+            call.resolve(ret);
+        }).start();
+    }
+
+    /**
+     * 把往期的某一张设成壁纸。
+     *
+     * dayId 由网页层传入 —— 它是 getRecent() 列表第 0 条的 id，也就是必应「今天」
+     * 那张图的 hsh。原生层把它记下来当固定标记：必应没换图就不动用户挑的这张，
+     * 一换图（新的一天）固定自动解除。全程不碰「每天自动更换」那个开关。
+     */
+    @PluginMethod
+    public void setSpecific(PluginCall call) {
+        final String urlbase = call.getString("urlbase", "");
+        final String id      = call.getString("id", "");
+        final String title   = call.getString("title", "");
+        final String dayId   = call.getString("dayId", "");
+        final Context app    = getContext().getApplicationContext();
+
+        new Thread(() -> {
+            WallpaperUpdater.Result r =
+                WallpaperUpdater.setSpecific(app, urlbase, id, title, dayId);
             JSObject ret = new JSObject();
             ret.put("ok", r.ok);
             ret.put("changed", r.changed);

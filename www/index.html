@@ -30,10 +30,18 @@
   /* ---------- 预览：图就是界面本身，不加卡片框 ---------- */
   /* 横向滑动浏览最近 8 天。第 0 屏是今天（也就是当前壁纸），往右是更早的。
      只能看，不能设也不能下载 —— 这样跟自动更新完全没有冲突。 */
-  #preview {
+  /* #stage 是 #preview / #empty / #dots 三者的定位祖先。
+     少了它，那两个 absolute 元素会退回相对视口定位 —— 页码点会跑到屏幕最底下，
+     压在「电池优化设置」那排按钮上，而不是压在照片下沿。 */
+  #stage {
     position: relative;
     flex: 1 1 auto;
     min-height: 0;
+    display: flex;
+  }
+  #preview {
+    flex: 1 1 auto;
+    min-width: 0;
     background: #EFE6D4;
     display: flex;
     overflow-x: auto;
@@ -46,6 +54,7 @@
     flex: 0 0 100%;
     scroll-snap-align: start;
     background: #EFE6D4 center/cover no-repeat;
+    cursor: pointer;
   }
   /* 页码点。只有翻到非当天时才显形，平时不占视觉 */
   #dots {
@@ -71,7 +80,7 @@
   #capText { font-size: 15px; line-height: 1.5; color: var(--ink); }
   #stamp { margin-top: 3px; font-size: 12.5px; color: var(--muted); }
   #empty {
-    position: absolute; inset: 0 0 200px 0; display: grid; place-items: center;
+    position: absolute; inset: 0; display: grid; place-items: center;
     align-content: center; gap: 18px;
     color: var(--muted); font-size: 14px; text-align: center; padding: 0 40px;
   }
@@ -154,17 +163,62 @@
   }
   #help button:active { color: var(--ink); }
 
+  /* ---------- 全屏预览 ---------- */
+  #viewer {
+    position: fixed; inset: 0; z-index: 50;
+    background: #000;
+    display: flex;
+    overflow-x: auto; overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    touch-action: pan-x;
+    opacity: 0; transition: opacity .18s ease;
+  }
+  #viewer::-webkit-scrollbar { display: none; }
+  #viewer[hidden] { display: none; }
+  #viewer.on { opacity: 1; }
+  /* 缩放中要独占触摸，不然横向滚动会跟双指手势打架 */
+  #viewer.zoomed { overflow: hidden; touch-action: none; scroll-snap-type: none; }
+  .vpage {
+    flex: 0 0 100%; height: 100%;
+    scroll-snap-align: start;
+    display: grid; place-items: center;
+    overflow: hidden;
+  }
+  .vpage img {
+    max-width: 100%; max-height: 100%;
+    object-fit: contain;
+    transform-origin: 0 0;
+    -webkit-user-drag: none; user-select: none;
+  }
+  #vcap {
+    position: fixed; left: 0; right: 0;
+    bottom: calc(18px + env(safe-area-inset-bottom));
+    z-index: 51; padding: 0 24px;
+    color: rgba(255,255,255,.86); font-size: 13px; line-height: 1.5;
+    text-align: center; text-shadow: 0 1px 3px rgba(0,0,0,.7);
+    pointer-events: none;
+    transition: opacity .18s ease;
+  }
+  #vcap[hidden], #viewer[hidden] + #vcap { display: none; }
+  #viewer.zoomed ~ #vcap { opacity: 0; }
+
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
 <body>
 
+<div id="stage">
 <div id="preview"></div>
 <div id="empty">
   <svg id="mark" viewBox="0 0 100 100" aria-hidden="true"><path fill-rule="evenodd" d="M66.8,94C66,94 65.9,93.9 65.4,93.2C65.3,93.1 65.1,92.8 64.9,92.6C64.5,92.2 64.4,92 64.4,91.5C64.3,91.3 64.3,90.9 64.3,90.7C64.2,90.2 64.3,89.9 64.5,89.2C64.8,88.4 64.8,88.3 64.9,87C65,86.2 65,86.2 64.9,85.7C64.7,84.9 64.8,84.7 65.2,84.1C65.9,83.4 65.9,83.3 65.9,81.6C65.9,80.5 65.9,80.3 66,79.8C66.1,79.3 66.1,79.2 66.1,78C66,77.1 66,76.7 66.1,76.1C66.1,75.7 66.2,75.1 66.2,74.8C66.3,74.1 66.4,73.4 66.6,72.9C66.7,72.6 66.7,72.5 66.8,71.4C66.8,69 66.9,68.3 67,68C67.1,67.6 67,66.1 66.9,65.5C66.8,65.4 66.8,65 66.7,64.8C66.6,63.5 65.7,63.2 64.1,64C63.9,64.1 63.5,64.2 63.3,64.3C62.8,64.4 62.6,64.4 62.3,64.6C62,64.7 62,64.7 60.9,65C60.2,65.2 59.9,65.3 59.7,65.4C59.1,65.7 58.9,65.8 58.4,65.9C58.1,66 57.7,66.1 57.5,66.1C57.3,66.2 57,66.3 56.8,66.3C56.5,66.4 56.3,66.5 56,66.7C55.8,66.8 55.5,67 55.3,67.1C54.7,67.4 54.5,67.6 54.5,68.5C54.4,69.3 54.4,69.4 54.2,69.8C54,70.3 54,70.3 53.9,70.9C53.9,71.3 53.9,71.8 53.8,72.1C53.8,72.4 53.7,72.8 53.7,73C53.7,73.4 53.6,73.6 53.4,74.4C53.1,75.2 53.1,75.2 53.1,76.1C53.1,77 53,77.4 52.7,78C52.5,78.5 52.5,78.8 52.5,79.4C52.5,80.1 52.4,80.6 52.3,81C52.2,81.2 52.1,81.6 52.1,81.8C52,82.1 51.9,82.4 51.9,82.6C51.9,82.7 51.8,83 51.8,83.3C51.8,83.7 51.7,84 51.7,84.2C51.5,84.8 51.5,85 51.4,86.7C51.4,88.8 51.4,88.8 51,89.2C50.8,89.3 50.6,89.6 50.5,89.8C50.4,90.1 50.3,90.2 50,90.4C49.8,90.6 49.5,90.8 49.4,90.8C47.7,92.2 45.5,92.2 45,90.8C44.9,90.6 44.8,90.4 44.7,90.2C44.4,89.8 44.2,89.3 44.2,88.6C44.2,88.5 44.2,88 44.1,87.6C44,87 44,86.9 44.1,86.4C44.1,86.2 44.1,85.6 44.2,85.2C44.2,84.1 44.2,84 45.1,83C45.8,82 45.8,82 45.8,80.8C45.8,79.9 45.8,79.8 46.1,79.1C46.2,78.8 46.3,78.5 46.4,78.2C46.5,77.3 46.6,77 46.7,76.5C46.8,76.2 46.8,75.7 46.9,75.5C46.9,75 46.9,75 47.1,74.5C47.3,74.2 47.4,74 47.4,73.8C47.4,73.6 47.5,73.3 47.6,73.1C47.7,72.9 47.7,72.6 47.7,72.4C47.8,72.3 47.8,71.9 47.9,71.5C48,70.5 47.9,70.4 47,70.7C46.4,70.9 46.2,71 45.8,71.3C45.4,71.5 45.2,71.6 44.6,71.8C44.3,72 43.9,72.1 43.6,72.3C42.5,72.9 41.6,73 41.4,72.4C41.2,72 41.4,71.7 42.1,71.4C42.5,71.2 43.4,70.7 43.8,70.4C44,70.3 44.6,70 45.2,69.7C45.7,69.4 46.3,69.2 46.4,69.1C46.5,69 46.8,68.9 47,68.8C48.4,68.2 49.2,67.1 49.3,65.7C49.4,65.4 49.4,65 49.4,64.8C49.5,64.3 49.5,64.2 49,63.9C48.3,63.5 48.4,63 49.2,62.2C49.8,61.6 49.9,61.4 50.1,60.4C50.1,60.1 50.2,59.8 50.3,59.6C50.6,58.9 50.5,57.7 50.3,57.4C50.1,57.2 49.4,57.3 48.2,57.8C47.4,58.2 46.7,58.4 45.9,58.4C44.5,58.4 44.1,58.2 44.1,57C44.1,56.7 44.1,56.2 44.1,55.9C44,55.2 44.1,55.2 44.6,54.9C44.9,54.8 45,54.7 45.4,54.4C45.8,54 46,53.9 46.8,53.7C47.2,53.6 47.3,53.6 47.7,53.2C47.9,53 48,52.9 48.3,52.8C48.8,52.5 48.9,52.4 48.7,51.7C48.7,51.5 48.6,51.2 48.6,51C48.5,50.7 48.4,50.2 48.3,49.8C48,48.7 48,48.1 48.2,47.3C48.3,46.8 48.4,46.7 48.4,45.9C48.4,45 48.5,44.6 48.6,43.7C48.6,43.4 48.7,43 48.7,42.7C48.7,42.5 48.8,42.2 48.9,41.9C49.3,40.9 49.5,40 49.5,39.1C49.6,38.4 49.7,37.9 49.9,37.3C50,37 50.1,36.3 50,35.7C50,35.1 50,35.1 50.4,35C50.9,34.9 51.1,35.1 51.2,35.8C51.4,36.5 51.5,36.6 52,36.8C52.5,36.9 52.6,37 52.6,37.8C52.7,38.6 52.9,40.1 53,40.5C53.1,40.7 53.1,41.1 53.1,41.4C53.2,41.9 53.2,42.1 53.3,42.4C53.5,42.7 53.5,42.8 53.5,43.6C53.5,44.2 53.5,44.5 53.6,44.6C53.7,44.7 53.8,45.1 53.9,45.3C54.2,46.3 54.8,46.2 55.6,45.2C55.9,44.7 56.9,44 57.3,43.8C58.8,43.3 58.6,45 57,46.4C56.5,46.8 56.4,47.2 56.7,47.3C57,47.5 57.3,47.4 57.8,46.9C58,46.7 58.2,46.6 58.4,46.5C58.7,46.3 58.9,46.1 59.1,45.8C59.5,45.1 60,44.7 60.6,44.4C60.8,44.3 61,44.1 61.1,44C61.3,43.7 61.7,43.1 61.8,42.9C62,42.6 62.1,42.4 62.6,42.1C63.1,41.7 63.2,41.6 63.6,41.1C63.7,40.8 64,40.6 64.1,40.4C64.5,40.1 64.6,40 64.9,39.6C65,39.3 65.2,39.1 65.5,38.8C65.8,38.5 65.9,38.4 66.1,38C66.2,37.8 66.5,37.4 66.6,37.3C67,36.8 67,36.8 67.2,36.3C67.2,36.1 67.4,35.7 67.5,35.4C67.8,34.7 67.9,34.5 67.9,34C67.8,33.1 68.3,32.6 69.3,32.8C69.5,32.8 70.1,32.8 70.6,32.9C72,32.9 72.3,33 72.6,33.3C73.4,34.1 73.2,35.6 72.2,36.9C72.1,37.1 71.9,37.4 71.8,37.7C71.6,38.2 71.2,38.8 70.9,39.3C70.7,39.4 70.5,39.7 70.4,39.9C70.2,40.1 70.1,40.3 70,40.4C69.4,41.1 69.7,41.3 72.4,41.2C73.9,41.2 74.1,41.3 74.4,42C74.5,42.2 74.6,42.4 74.8,42.5C75.3,43.2 75.2,44 74.5,45C74.3,45.3 74.2,45.5 74.1,45.7C73.9,46.5 73.1,47.6 72.3,48.2C72.2,48.3 72,48.5 71.9,48.6C71.7,48.8 71.5,49 71.4,49.1C71.3,49.2 71,49.5 70.8,49.7C70.6,49.9 70.3,50.2 70.1,50.4C68.8,51.5 68.5,52.5 69,54.1C69,54.4 69.1,54.8 69.2,55C69.2,55.3 69.2,55.6 69.3,55.8C69.3,56 69.3,56.4 69.4,56.6C69.4,57.8 69.7,58.1 70.7,57.7C72,57.2 74.2,57.9 74.8,59C75.2,59.8 75,61.4 74.4,62C73.4,62.8 73.1,62.9 72.3,62.9C71.1,62.9 70.9,63.3 71.1,64.9C71.2,65.6 71.2,65.8 71,66.4C71,66.6 70.9,66.9 70.9,67.1C70.8,67.3 70.8,67.7 70.7,68C70.6,68.6 70.6,68.6 70.7,69.1C70.8,69.4 70.8,70.1 70.8,70.6C70.9,71.6 70.9,71.7 71.2,72.3C71.3,72.6 71.3,74.2 71.2,74.8C71.1,75.2 71.1,75.7 71.2,76.4C71.2,76.7 71.2,76.9 71.1,77.3C71.1,77.8 71.1,78 71.1,78.4C71.1,78.8 71.1,78.9 71.1,79.3C71,79.7 71,79.9 71.1,80.2C71.1,80.4 71.1,81 71.1,81.7C71,82.7 71.1,82.9 71.1,83.3C71.2,83.5 71.2,84.1 71.2,84.7C71.3,86 71.4,86.6 71.9,87.5C72.1,87.8 72.3,88.2 72.4,88.4C72.7,89 72.7,91.3 72.3,91.9C71.7,92.9 71.3,93.2 70.5,93.4C70.3,93.5 69.8,93.6 69.5,93.7C68.5,94 68.1,94.1 66.8,94Z M26.5,79.6C26.2,79.5 26.2,79.4 26.1,78.8C26,78.4 25.9,78.3 25.5,78.1C24.5,77.4 24.8,75.8 26.2,74.7C26.7,74.2 27.2,73.7 27.5,73.1C27.7,72.7 27.8,72.6 28.1,72.2C28.6,71.7 28.6,71.7 29,70.9C29.2,70.6 29.4,70.2 29.6,70C29.9,69.7 30.3,69 30.5,68.6C30.6,68.3 30.8,68 31.5,67.2C31.6,67 31.7,66.8 31.8,66.5C32,66.1 32,66 32.3,65.6C33.2,64.5 33.9,63.3 34,62.8C34.2,62.4 34.3,62.1 34.5,61.8C34.7,61.5 34.9,61.1 35,60.7C35.1,60.3 35.1,60.1 35.6,59.4C36.1,58.6 36.1,58.4 36.3,57.6C36.4,56.7 36.6,56.2 36.8,55.8C36.9,55.6 37.1,55.3 37.2,55C37.3,54.5 37.6,53.8 37.7,53.6C38.2,52.8 38.3,52.3 38.4,51.5C38.5,51 38.6,50.8 38.8,50.5C38.9,50.3 39,50 39.1,49.8C39.2,49.4 39.4,49 39.7,48.5C39.9,48.1 40,47.9 40.1,47.4C40.1,47.3 40.2,47 40.3,46.8C40.4,46.5 40.5,46.3 40.5,46.1C40.6,46 40.7,45.8 40.8,45.7C41.2,45.4 41.2,45.3 41.3,44.7C41.3,44.1 41.5,43.5 41.7,43C41.8,42.8 41.9,42.6 42,42.3C42,42 42.1,41.7 42.3,41.3C42.4,41 42.6,40.6 42.6,40.4C42.7,40 42.8,40 43.1,39.5C43.3,39.2 43.4,39 43.5,38.7C43.5,38.4 43.7,38.1 43.8,37.9C43.8,37.6 44,37.3 44,37C44.2,36.3 44.6,35.2 44.9,34.6C45.3,33.6 45.4,33.5 45.4,33C45.6,32.3 45.7,31.9 45.9,31.5C46,31.2 46.1,31 46.1,30.6C46.2,30.2 46.4,29.5 46.9,28.2C47.2,27.3 47.4,26.8 47.5,26C47.5,25.7 47.6,25.3 47.6,25.1C47.7,24.9 47.8,24.4 47.8,24.1C47.9,23.8 47.9,23.4 48,23.2C48,23 48.1,22.6 48.1,22.3C48.1,21.9 48.2,21.8 48.3,21.5C48.4,21.3 48.5,21 48.5,20.8C48.7,19.4 48.8,19 49,18.5C49.2,17.8 49.3,17.3 49.3,16.5C49.4,16.1 49.4,15.7 49.6,15.1C49.7,14.7 49.8,14.1 49.9,13.9C49.9,13.6 50,13.3 50,13.1C50,12.9 50.1,12.6 50.1,12.4C50.1,12.2 50.2,11.8 50.3,11.5C50.4,11.1 50.4,10.9 50.4,10.2C50.5,9.4 50.5,9.2 50.6,8.9C50.7,8.6 50.7,8.3 50.7,7.9C50.8,6.5 51.2,6 51.9,6C52.9,6 53.6,7.6 53,8.4C52.6,8.8 52.5,9.4 52.7,10.6C52.7,11 52.7,11.3 52.7,11.7C52.7,12.4 52.8,13.2 52.9,13.8C53.1,14.5 53.1,15.1 53,15.9C53,16.2 52.9,17.1 52.9,17.8C52.9,18.5 52.9,19.3 52.8,19.6C52.8,19.9 52.8,20.3 52.8,20.4C52.8,20.8 52.6,22.3 52.5,22.5C52.5,22.7 52.4,23.1 52.4,23.5C52.4,24 52.4,24.2 52.3,24.5C52.2,24.9 52.1,25.1 52.1,25.7C52.1,26.1 52,26.5 52,26.5C52,26.6 52,26.9 52,27.2C51.9,27.8 51.9,27.9 51.8,28.2C51.5,28.8 51.5,29 51.4,29.6C51.4,30.2 51.3,30.4 51.1,30.9C50.9,31.2 50.9,31.4 50.8,31.9C50.6,32.9 50.4,33.6 50.1,34C49.9,34.3 49.8,34.6 49.9,34.9C49.9,35.1 49.9,35.1 49.7,35.4C49.5,35.5 49.4,35.8 49.3,35.9C49.2,36.1 49,36.3 49,36.4C48.7,36.8 48.7,37 48.6,37.7C48.5,38.1 48.5,38.6 48.4,38.7C48.4,38.9 48.3,39.3 48.2,39.7C48.1,40.3 48,40.5 47.5,41.4C47.5,41.5 47.4,41.8 47.3,42C47.2,42.5 46.8,43.2 46.4,43.7C46.2,44.1 46.1,44.2 46.1,44.7C46,45.2 46,45.2 45.7,45.9C45.4,46.4 45.4,46.4 45.4,47C45.3,47.7 45.2,47.8 44.9,48.2C44.7,48.5 44.6,48.7 44.5,49.1C44.5,49.3 44.4,49.5 44.3,49.8C44.2,50 44,50.5 43.9,50.8C43.8,51.4 43.6,51.9 43.4,52.5C43.3,52.7 43.1,53.2 43,53.5C42.9,53.8 42.8,54.2 42.7,54.4C42.6,54.6 42.5,55 42.4,55.2C42.2,56.3 41.5,58.5 41.2,59.1C41,59.4 40.9,59.7 40.8,60.3C40.7,60.8 40.6,61.2 40.5,61.3C40.4,61.5 40.3,61.8 40.2,62.1C40.1,62.4 40,62.8 39.9,63C39.8,63.1 39.8,63.4 39.7,63.7C39.7,64.3 39.6,64.4 39.4,64.8C39.1,65.1 38.9,65.6 38.7,66.1C38.7,66.3 38.5,66.7 38.4,66.9C38.3,67.3 38.2,67.6 38.1,67.9C38,68.4 37.8,68.9 37.6,69.4C37.5,69.6 37.3,69.9 37.3,70.1C37.2,70.2 37.1,70.5 37,70.6C37,70.7 36.8,71.1 36.8,71.3C36.7,71.6 36.6,72 36.5,72.1C36.2,72.7 36.2,72.9 36.6,73.2C37,73.5 37.1,74.1 36.7,74.5C36.6,74.6 35.6,75 35.4,75C35.1,75 34.7,75.4 34.3,76C34.1,76.4 33.7,76.8 33,77.3C32.9,77.4 32.7,77.6 32.6,77.7C32.5,77.8 32.3,77.9 32.1,78.1C31.9,78.2 31.7,78.4 31.5,78.5C30.9,79.1 30.4,79.3 29.4,79.4C29.1,79.5 28.6,79.5 28.4,79.6C28,79.7 26.8,79.7 26.5,79.6Z M55.8,64.7C56.2,64.5 57.3,64 58,63.7C58.3,63.6 58.7,63.5 58.9,63.3C59.2,63.1 59.5,63 59.9,62.8C61,62.4 61.4,62.3 61.8,62C62.2,61.8 62.4,61.7 63,61.5C63.2,61.5 63.4,61.3 63.6,61.2C63.7,61.1 64.1,60.9 64.5,60.7C65.8,60.1 65.8,59.7 64.8,58.2C64.4,57.6 64.5,57.2 65,56.9C65.6,56.6 65.7,56.3 65.4,55.3C65.1,54.3 64.8,54.2 64.1,54.8C64,54.9 63.7,55.1 63.5,55.3C63.3,55.4 63,55.7 62.8,55.8C62.4,56.1 62.2,56.2 61.7,56.3C61.2,56.4 61,56.5 60.7,56.7C60.6,56.8 60.3,57 60,57.2C59.6,57.4 59.4,57.5 59.1,57.8C58.6,58.2 58.5,58.3 57.9,58.4C57.3,58.5 57.1,58.6 56.7,58.9C56.5,59.1 56.3,59.3 56.1,59.4C55.6,59.9 55.2,60.3 54.9,60.7C54.7,61 54.5,61.3 54.4,61.4C54.2,61.7 54.2,62 54.3,62.7C54.3,63 54.4,63.5 54.4,63.8C54.4,64.5 54.4,64.5 54.6,64.6C54.9,64.9 55.3,65 55.8,64.7Z M53.4,58.3C53.6,58.2 53.8,58.1 54,57.7C54.5,57.1 54.6,57 55.2,56.8C55.5,56.7 55.8,56.5 56.4,56C56.7,55.7 56.9,55.6 57.3,55.4C57.8,55.2 58,55 58.3,54.6C59,53.7 59.1,53.5 59.6,53.3C59.9,53.1 60,53 60.2,52.8C60.4,52.6 60.6,52.4 60.8,52.2C61,52.1 61.3,51.8 61.4,51.6C61.7,51.2 61.9,51 62.4,50.6C62.9,50.2 63,49.8 62.8,49.6C62.6,49.4 62.1,49.6 61.6,50C61.3,50.3 60.7,50.7 60.4,50.9C59.8,51.1 59.6,51.2 59.2,51.6C58.2,52.6 58.1,52.7 57.5,52.9C57.1,53 56.9,53.2 56.6,53.5C56.3,53.9 56.2,53.9 55.7,54.1C55.1,54.3 53,55.7 52.6,56.1C52.1,56.9 52.7,58.6 53.4,58.3Z M56.6,29.4C55.9,29.3 55.6,28.9 55.8,28.1C55.9,27.4 56.5,26.7 57.9,25.6C58.1,25.5 58.4,25.2 58.6,25C58.8,24.8 59.2,24.5 59.4,24.3C60.2,23.7 60.3,23.5 60.6,23.1C60.8,22.8 60.9,22.7 61.1,22.5C61.5,22.3 61.6,22.1 61.9,21.7C62,21.6 62.2,21.3 62.3,21.2C62.6,20.9 62.6,20.6 62.7,20.1C62.8,19.5 62.9,19.4 63.6,19.2C63.9,19.1 64,19 64.2,18.6C64.6,17.9 64.8,17.5 65.2,17.2C65.8,16.5 66.5,15.1 66.6,14.3C66.6,14 66.7,13.7 66.7,13.6C66.9,13.1 66.9,13 66.9,12.5C67,11.7 67.2,11.6 67.9,11.6C69.2,11.5 69.9,11.7 70.3,12.3C71.1,13.4 71.2,14.5 70.8,15.5C70.6,15.9 70.5,16.2 70.4,16.5C70.3,17.3 70.1,17.6 69.5,18.2C69.2,18.5 69.1,18.8 68.8,19.2C68.7,19.4 68.6,19.5 68.4,19.7C67.8,20 67.1,20.9 67.1,21.2C67.1,21.6 67.3,21.7 67.9,21.9C68.4,22 68.6,22.2 69.3,23C69.8,23.7 69.8,25.2 69.4,26.1C69.1,26.5 68.2,27.3 67.4,27.6C67.2,27.6 67,27.8 66.8,27.8C66.7,27.9 66.4,28 66.3,28C66.2,28 65.8,28.1 65.4,28.2C65.1,28.2 64.6,28.4 64.4,28.4C64.1,28.5 63.8,28.6 63,28.7C62.2,28.8 62,28.8 61.5,29C61.3,29.1 60.9,29.2 60.6,29.2C60.4,29.2 60.1,29.3 59.9,29.3C59.6,29.4 59.4,29.4 59,29.4C58.1,29.4 57.8,29.4 57.3,29.4C57,29.4 56.7,29.4 56.6,29.4Z"/></svg>
   <div>还没有壁纸<br>点下面的按钮取一张</div>
 </div>
 <div id="dots"></div>
+</div>
+
+<div id="viewer" hidden></div>
+<div id="vcap" hidden></div>
 
 <div id="panel">
   <div id="caption" hidden>
@@ -240,29 +294,57 @@ function showCaption(i) {
   $('dots').classList.toggle('show', shots.length > 1 && i !== 0);
 }
 
+// 当前这批图的指纹。render() 每次回来都会重画一遍，但内容多半没变，
+// 重建 DOM 会把滚动位置抹掉 —— 用户滑到第三天，锁个屏回来就被弹回第一张。
+// 指纹一样就整个跳过重建。
+let painted = '';
+const sign = list => list.map(x => (x.src || x.bg || '') + '|' + (x.date || '')).join('~');
+
 function paint() {
+  const fp = sign(shots);
+  if (fp === painted) { showCaption(atIndex); return; }
+
   const box = $('preview');
+  // 内容真的变了才重建。重建必然丢滚动位置，所以先把当前位置记下来，
+  // 画完按 index 还原 —— 不然 render() 里那两次 paint 会把人来回甩。
+  const keep = Math.min(atIndex, Math.max(0, shots.length - 1));
+
   box.innerHTML = '';
   $('dots').innerHTML = '';
-  shots.forEach((it, i) => {
+  shots.forEach(it => {
     const d = document.createElement('div');
     d.className = 'shot';
-    // 第 0 屏优先用本地文件：秒开，且断网时照样能看
     if (it.src) d.style.backgroundImage = 'url("' + it.src + '")';
     else if (it.bg) d.style.background = it.bg;
     box.appendChild(d);
     $('dots').appendChild(document.createElement('b'));
   });
   $('empty').hidden = shots.length > 0;
-  showCaption(0);
+  painted = fp;
+
+  atIndex = keep;
+  // 等一帧，等 .shot 拿到实际宽度再定位，否则 clientWidth 还是 0
+  requestAnimationFrame(() => {
+    box.scrollLeft = keep * box.clientWidth;
+    showCaption(keep);
+    syncGo();
+  });
 }
 
 $('preview').addEventListener('scroll', () => {
-  const w = $('preview').clientWidth;
+  const box = $('preview');
+  const w = box.clientWidth;
   if (!w) return;
-  const i = Math.round($('preview').scrollLeft / w);
-  if (i !== atIndex && shots[i]) { atIndex = i; showCaption(i); }
+  const i = Math.round(box.scrollLeft / w);
+  if (i !== atIndex && shots[i]) { atIndex = i; showCaption(i); syncGo(); }
 }, { passive: true });
+
+// 点图进全屏预览
+$('preview').addEventListener('click', e => {
+  const shot = e.target.closest('.shot');
+  if (!shot || !shots.length) return;
+  openViewer([...$('preview').children].indexOf(shot));
+});
 
 // 只在电脑浏览器里调界面时用，装进 App 后永远走不到这里
 const DEMO_IMG = '';   // 想看真实照片效果的话，把任意一张图片的网址填进来
@@ -270,9 +352,10 @@ function demo() {
   const g = ['linear-gradient(168deg,#5B7C99 0%,#9DB4B8 38%,#C8BE9A 72%,#A89E7E 100%)',
              'linear-gradient(150deg,#6E5A4A 0%,#B49A78 55%,#E0CFA8 100%)',
              'linear-gradient(200deg,#3E5A5C 0%,#7FA0A0 50%,#BFC9B4 100%)'];
-  shots = g.map((bg, i) => ({ src: '', bg, title: '哥德堡群岛的岸边，瑞典 (© Martin Wahlborg/Getty Images)',
+  shots = g.map((bg, i) => ({ src: '', bg, full: '', id: 'demo' + i, urlbase: '',
+                              title: '哥德堡群岛的岸边，瑞典 (© Martin Wahlborg/Getty Images)',
                               date: '2026090' + (4 - i) }));
-  if (DEMO_IMG) shots[0].src = DEMO_IMG;
+  if (DEMO_IMG) { shots[0].src = DEMO_IMG; shots[0].full = DEMO_IMG; }
   shots.lastTime = Date.now();
   paint();
   $('auto').checked = true;
@@ -312,6 +395,9 @@ async function render() {
       src: (i === 0 && synced)
         ? window.Capacitor.convertFileSrc(s.imagePath) + '?t=' + s.lastTime
         : r.imgHost + it.urlbase + r.imgSuffix,
+      // 全屏预览和「设为壁纸」都要用原图直链，本地那张是压过的竖版裁切
+      full: r.imgHost + it.urlbase + r.imgSuffix,
+      id: it.id, urlbase: it.urlbase,
       title: it.title, date: it.date
     }));
     if (list.length) {
@@ -338,19 +424,36 @@ $('target').addEventListener('click', async e => {
   msg('');
 });
 
+// 主按钮的含义跟着当前屏走：第 0 屏是「立即更换」（拉今天的图），
+// 往期屏是「设为壁纸」（把这一张设上并固定到今天）
+function syncGo() {
+  const past = atIndex > 0 && shots[atIndex];
+  $('go').textContent = past ? '设为壁纸' : '立即更换';
+}
+
 $('go').addEventListener('click', async () => {
   if (!W()) { msg('浏览器预览模式，按钮不会真的换壁纸'); return; }
+  const it = atIndex > 0 ? shots[atIndex] : null;
   $('go').disabled = true;
-  $('go').textContent = '正在更换…';
+  $('go').textContent = it ? '正在设置…' : '正在更换…';
   msg('');
   try {
-    const r = await W().updateNow({ force: true });
+    // 往期那张走 setSpecific，并把「今天」那张的 id 一起传过去当固定标记；
+    // 第 0 屏还是走原来的 updateNow，它会顺手解除固定
+    const r = it
+      ? await W().setSpecific({
+          urlbase: it.urlbase, id: it.id, title: it.title || '',
+          dayId: (shots[0] && shots[0].id) || ''
+        })
+      : await W().updateNow({ force: true });
     if (!r.ok) {
       msg(r.error || '更换失败', true);
     } else {
       const t = [...$('target').children].find(b => b.getAttribute('aria-pressed') === 'true').dataset.v;
       if (t !== 'home' && !r.lockOk) {
         msg('桌面已换好，但锁屏没能设置成功 —— 这台手机的系统可能不允许', true);
+      } else if (it) {
+        msg('已设为 ' + (dateLabel(it.date) || '这一天') + ' 的图，明天恢复自动更换');
       } else {
         msg('已换好');
       }
@@ -363,11 +466,214 @@ $('go').addEventListener('click', async () => {
   render();
 });
 
+/* ---------- 全屏预览 ----------
+   双击 / 双指放大，放大后单指拖动平移，缩回 1 倍时单指改为翻页；
+   单击关闭，未放大时向下拖也关闭。跟微信那套操作一致。 */
+let vOpen = false, vIndex = 0, vScale = 1, vX = 0, vY = 0;
+let vImg = null, vLastTap = 0;
+
+function vApply() {
+  if (!vImg) return;
+  vImg.style.transform =
+    'translate(' + vX + 'px,' + vY + 'px) scale(' + vScale + ')';
+  $('viewer').classList.toggle('zoomed', vScale > 1.01);
+}
+
+function vReset() {
+  vScale = 1; vX = 0; vY = 0;
+  if (vImg) vImg.style.transition = '';
+  vApply();
+}
+
+function vCaption() {
+  const it = shots[vIndex];
+  $('vcap').textContent = it
+    ? (it.title || '') + (it.date ? '　' + dateLabel(it.date) : '')
+    : '';
+}
+
+function openViewer(i) {
+  if (!shots.length) return;
+  vIndex = Math.max(0, Math.min(i, shots.length - 1));
+  const box = $('viewer');
+  box.innerHTML = '';
+  shots.forEach(it => {
+    const page = document.createElement('div');
+    page.className = 'vpage';
+    const url = it.full || it.src || '';
+    if (url) {
+      const im = document.createElement('img');
+      // 优先用远程原图：本地那张是 1080x1920 的竖版裁切，放大了看是糊的
+      im.src = url;
+      im.alt = '';
+      page.appendChild(im);
+    } else {
+      // 浏览器预览模式没有真图，拿渐变顶上，手势逻辑照样能试
+      page.style.background = it.bg || '#000';
+    }
+    box.appendChild(page);
+  });
+  box.hidden = false;
+  $('vcap').hidden = false;
+  vOpen = true;
+  requestAnimationFrame(() => {
+    box.scrollLeft = vIndex * box.clientWidth;
+    box.classList.add('on');
+    vImg = box.children[vIndex] && box.children[vIndex].querySelector('img');
+    vReset();
+    vCaption();
+  });
+}
+
+function closeViewer() {
+  if (!vOpen) return;
+  vOpen = false;
+  const box = $('viewer');
+  box.classList.remove('on', 'zoomed');
+  $('vcap').hidden = true;
+  setTimeout(() => {
+    box.hidden = true;
+    box.innerHTML = '';
+    vImg = null;
+  }, 180);
+  // 退出时把下层滑到同一张，两边始终对齐
+  const pv = $('preview');
+  if (pv.clientWidth && shots[vIndex]) {
+    pv.scrollLeft = vIndex * pv.clientWidth;
+    atIndex = vIndex;
+    showCaption(vIndex);
+    syncGo();
+  }
+}
+
+$('viewer').addEventListener('scroll', () => {
+  const box = $('viewer');
+  if (!vOpen || vScale > 1.01 || !box.clientWidth) return;
+  const i = Math.round(box.scrollLeft / box.clientWidth);
+  if (i !== vIndex && shots[i]) {
+    vIndex = i;
+    vImg = box.children[i] && box.children[i].querySelector('img');
+    vReset();
+    vCaption();
+  }
+}, { passive: true });
+
+(function bindGestures() {
+  const box = $('viewer');
+  let mode = 0;              // 0 空闲 1 单指 2 双指
+  let sx = 0, sy = 0, ox = 0, oy = 0;
+  let baseDist = 0, baseScale = 1, cx = 0, cy = 0;
+  let moved = false;
+
+  const dist = t =>
+    Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+
+  box.addEventListener('touchstart', e => {
+    if (!vOpen) return;
+    if (e.touches.length === 2) {
+      mode = 2; moved = true;
+      baseDist = dist(e.touches) || 1;
+      baseScale = vScale;
+      cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      ox = vX; oy = vY;
+      if (vImg) vImg.style.transition = '';
+    } else if (e.touches.length === 1) {
+      mode = 1; moved = false;
+      sx = e.touches[0].clientX; sy = e.touches[0].clientY;
+      ox = vX; oy = vY;
+    }
+  }, { passive: true });
+
+  box.addEventListener('touchmove', e => {
+    if (!vOpen) return;
+    if (mode === 2 && e.touches.length === 2) {
+      e.preventDefault();
+      const k = dist(e.touches) / baseDist;
+      vScale = Math.max(1, Math.min(baseScale * k, 5));
+      // 以两指中点为锚缩放，手感才对
+      vX = ox + (cx - cx * (vScale / baseScale));
+      vY = oy + (cy - cy * (vScale / baseScale));
+      vApply();
+    } else if (mode === 1 && vScale > 1.01) {
+      // 放大状态下单指是平移，这时要吃掉横向滚动
+      e.preventDefault();
+      const dx = e.touches[0].clientX - sx, dy = e.touches[0].clientY - sy;
+      if (Math.abs(dx) > 6 || Math.abs(dy) > 6) moved = true;
+      vX = ox + dx; vY = oy + dy;
+      vApply();
+    } else if (mode === 1) {
+      const dx = e.touches[0].clientX - sx, dy = e.touches[0].clientY - sy;
+      if (Math.abs(dx) > 6 || Math.abs(dy) > 6) moved = true;
+    }
+  }, { passive: false });
+
+  box.addEventListener('touchend', e => {
+    if (!vOpen) return;
+    if (e.touches.length === 0) {
+      // 未放大时向下甩一段就关闭
+      if (mode === 1 && vScale <= 1.01 && moved) {
+        const t = e.changedTouches[0];
+        if (t.clientY - sy > 90 && Math.abs(t.clientX - sx) < 60) {
+          closeViewer(); mode = 0; return;
+        }
+      }
+      if (vScale <= 1.01) vReset();
+      mode = 0;
+    } else if (e.touches.length === 1) {
+      mode = 1; moved = true;
+      sx = e.touches[0].clientX; sy = e.touches[0].clientY;
+      ox = vX; oy = vY;
+    }
+  }, { passive: true });
+
+  box.addEventListener('click', e => {
+    if (!vOpen) return;
+    const now = Date.now();
+    if (now - vLastTap < 280) {          // 双击：1 倍 <-> 2.5 倍
+      vLastTap = 0;
+      if (vImg) vImg.style.transition = 'transform .2s ease';
+      if (vScale > 1.01) { vReset(); }
+      else {
+        const rect = vImg ? vImg.getBoundingClientRect() : null;
+        vScale = 2.5;
+        if (rect) {
+          vX = (rect.left - e.clientX) * 1.5;
+          vY = (rect.top - e.clientY) * 1.5;
+        }
+        vApply();
+      }
+      return;
+    }
+    vLastTap = now;
+    // 单击关闭，但要等一下，否则双击的第一下就把它关了
+    setTimeout(() => {
+      if (vOpen && vLastTap && Date.now() - vLastTap >= 270 && !moved) closeViewer();
+    }, 290);
+  });
+})();
+
+// 实体返回键：预览开着时先关预览，而不是直接退出 App
+const AppPlugin = window.Capacitor && window.Capacitor.Plugins
+  && window.Capacitor.Plugins.App;
+if (AppPlugin && AppPlugin.addListener) {
+  AppPlugin.addListener('backButton', () => {
+    if (vOpen) closeViewer();
+    else if (AppPlugin.exitApp) AppPlugin.exitApp();
+  });
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && vOpen) closeViewer();
+});
+
 $('btnPower').addEventListener('click', () => W() && W().openPowerSettings());
 $('btnApp').addEventListener('click', () => W() && W().openAppSettings());
 
 // 从后台切回来时刷新一次，可能期间已经自动换过了
-document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
+document.addEventListener('visibilitychange', () => {
+  // 预览开着的时候不要 render：它会重建 shots，把正在看的那张抽掉
+  if (!document.hidden && !vOpen) render();
+});
 
 render();
 </script>
