@@ -47,6 +47,9 @@ public class WallpaperPlugin extends Plugin {
         JSObject ret = new JSObject();
         ret.put("autoEnabled", sp.getBoolean(WallpaperUpdater.KEY_AUTO, true));
         ret.put("target",      sp.getString(WallpaperUpdater.KEY_TARGET, "both"));
+        // lastId 是判断本地那张图还是不是「今天的」的唯一依据，网页层拿它跟
+        // getRecent() 返回的第 0 条比对，不一致就说明壁纸没跟上
+        ret.put("lastId",      sp.getString(WallpaperUpdater.KEY_LAST_ID, ""));
         ret.put("lastTitle",   sp.getString(WallpaperUpdater.KEY_LAST_TITLE, ""));
         ret.put("lastTime",    sp.getLong(WallpaperUpdater.KEY_LAST_TIME, 0));
         ret.put("lastError",   sp.getString(WallpaperUpdater.KEY_LAST_ERROR, ""));

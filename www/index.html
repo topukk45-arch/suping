@@ -226,8 +226,13 @@ function showCaption(i) {
   const it = shots[i];
   if (!it) return;
   $('capText').textContent = it.title || '';
+  // 第 0 屏正常是「当前壁纸」。但本地那张有可能落后于必应今天的图
+  // （自动更新关着、或者上次失败），这时第 0 屏显示的是今天的远程图，
+  // 不能再说成是当前壁纸，否则会出现「三天前的图配今天的说明」
   $('stamp').textContent = i === 0
-    ? (stampText(shots.lastTime) || '当前壁纸')
+    ? (shots.synced === false
+        ? '今天的图，还没换上'
+        : (stampText(shots.lastTime) || '当前壁纸'))
     : dateLabel(it.date) + ' 的壁纸';
   $('caption').hidden = false;
 
@@ -299,15 +304,19 @@ async function render() {
   // 再补最近 8 天。失败就保持只有一张，不报错打扰
   try {
     const r = await w.getRecent();
-    const list = (r.images || []).map((it, i) => ({
-      // 第 0 张仍旧用本地文件（秒开、离线可看），其余挂远程直链，不落地
-      src: (i === 0 && s.imagePath)
+    const images = r.images || [];
+    // 本地那张是不是就是今天这张。是的话第 0 屏走本地文件（秒开、离线可看），
+    // 不是的话说明壁纸还没跟上，第 0 屏改挂远程直链 —— 图和说明必须是同一张的
+    const synced = !!(s.imagePath && s.lastId && images[0] && s.lastId === images[0].id);
+    const list = images.map((it, i) => ({
+      src: (i === 0 && synced)
         ? window.Capacitor.convertFileSrc(s.imagePath) + '?t=' + s.lastTime
         : r.imgHost + it.urlbase + r.imgSuffix,
       title: it.title, date: it.date
     }));
     if (list.length) {
       list.lastTime = s.lastTime;
+      list.synced = synced;
       shots = list;
       paint();
     }
