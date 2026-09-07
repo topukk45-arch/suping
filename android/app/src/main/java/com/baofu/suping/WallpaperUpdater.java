@@ -37,6 +37,11 @@ public class WallpaperUpdater {
     public static final String KEY_LAST_TITLE = "last_title";     // 图片说明（copyright 字段）
     public static final String KEY_LAST_ERROR = "last_error";     // 上次失败原因，空表示上次是成功的
     public static final String KEY_RECENT     = "recent_json";    // 最近 8 天列表的缓存
+    // 用户滑到往期、按「设为壁纸」时写入：记下当下必应「今天」那张图的 hsh。
+    // 只要必应还没换图，这个值就等于 fetch 回来的 id，自动更新一律绕开；
+    // 必应一换图 id 变了，固定自动解除，次日 00:10 照常换新。
+    // 用 hsh 而不是本地日期，理由跟 KEY_LAST_ID 一样：手机时钟不可信。
+    public static final String KEY_PIN_DAY    = "pin_day";
     public static final String KEY_RECENT_AT  = "recent_at";      // 缓存时间戳
 
     private static final String UA =
@@ -94,6 +99,22 @@ public class WallpaperUpdater {
             r.imageId = id;
             r.title   = img.optString("copyright", "");
 
+            // 固定判断要放在 lastId 比对之前：被固定时 lastId 是往期那张的 hsh，
+            // 跟今天的对不上，走下去就会立刻被覆盖，固定也就没意义了
+            String pinDay = sp.getString(KEY_PIN_DAY, "");
+            if (!pinDay.isEmpty()) {
+                if (!force && id.equals(pinDay)) {
+                    // 必应还没换图，用户挑的那张留着不动
+                    r.ok = true;
+                    r.changed = false;
+                    sp.edit().putString(KEY_LAST_ERROR, "").apply();
+                    return r;
+                }
+                // 要么必应换图了（新的一天），要么用户自己按了「立即更换」，
+                // 两种情况固定都该解除
+                sp.edit().remove(KEY_PIN_DAY).apply();
+            }
+
             String lastId = sp.getString(KEY_LAST_ID, "");
             File current  = new File(ctx.getFilesDir(), "current.jpg");
 
@@ -106,44 +127,82 @@ public class WallpaperUpdater {
                 return r;
             }
 
-            // 下载到 .tmp 再改名，避免下到一半的图被当成完整壁纸用掉。
-            // 中途失败必须把 .tmp 删掉，否则半张图会一直躺在私有目录里。
-            File tmp = new File(ctx.getFilesDir(), "current.jpg.tmp");
-            try {
-                download(HOSTS[0] + urlbase + SUFFIX, tmp);
-                if (tmp.length() < 10240) throw new Exception("下载到的文件过小，可能不是图片");
-            } catch (Exception e) {
-                tmp.delete();
-                throw e;
-            }
-            if (current.exists() && !current.delete()) throw new Exception("旧图片删不掉");
-            if (!tmp.renameTo(current)) throw new Exception("保存图片失败");
+            return finish(ctx, sp, r, urlbase, id, r.title, null);
 
-            String target = sp.getString(KEY_TARGET, "both");
-            boolean wantHome = !"lock".equals(target);
-            boolean wantLock = !"home".equals(target);
-
-            // 桌面和锁屏分两次设置，各自开一个新的 InputStream。
-            // 不合并成一次 FLAG_SYSTEM|FLAG_LOCK 调用，是因为部分国产 ROM 对锁屏
-            // 壁纸有自己的一套实现，合并调用时锁屏失败会连带桌面一起失败。
-            if (wantHome) r.homeOk = apply(ctx, current, WallpaperManager.FLAG_SYSTEM);
-            if (wantLock) r.lockOk = apply(ctx, current, WallpaperManager.FLAG_LOCK);
-
-            if ((wantHome && !r.homeOk) && (wantLock && !r.lockOk)) {
-                throw new Exception("系统拒绝了设置壁纸的请求");
-            }
-
-            sp.edit()
-                .putString(KEY_LAST_ID, id)
-                .putString(KEY_LAST_TITLE, r.title)
-                .putLong(KEY_LAST_TIME, System.currentTimeMillis())
-                .putString(KEY_LAST_ERROR, "")
-                .apply();
-
-            r.ok = true;
-            r.changed = true;
+        } catch (Exception e) {
+            r.ok = false;
+            r.error = e.getMessage() == null ? e.toString() : e.getMessage();
+            sp.edit().putString(KEY_LAST_ERROR, r.error).apply();
             return r;
+        }
+    }
 
+    /**
+     * 把指定的一张图落盘并设成壁纸，然后写状态。runOnce 和 setSpecific 共用。
+     *
+     * @param pinDay 非空时写入 KEY_PIN_DAY（固定到这一天），为空则清掉固定
+     */
+    private static Result finish(Context ctx, SharedPreferences sp, Result r,
+                                 String urlbase, String id, String title,
+                                 String pinDay) throws Exception {
+        File current = new File(ctx.getFilesDir(), "current.jpg");
+
+        // 下载到 .tmp 再改名，避免下到一半的图被当成完整壁纸用掉。
+        // 中途失败必须把 .tmp 删掉，否则半张图会一直躺在私有目录里。
+        File tmp = new File(ctx.getFilesDir(), "current.jpg.tmp");
+        try {
+            download(HOSTS[0] + urlbase + SUFFIX, tmp);
+            if (tmp.length() < 10240) throw new Exception("下载到的文件过小，可能不是图片");
+        } catch (Exception e) {
+            tmp.delete();
+            throw e;
+        }
+        if (current.exists() && !current.delete()) throw new Exception("旧图片删不掉");
+        if (!tmp.renameTo(current)) throw new Exception("保存图片失败");
+
+        String target = sp.getString(KEY_TARGET, "both");
+        boolean wantHome = !"lock".equals(target);
+        boolean wantLock = !"home".equals(target);
+
+        // 桌面和锁屏分两次设置，各自开一个新的 InputStream。
+        // 不合并成一次 FLAG_SYSTEM|FLAG_LOCK 调用，是因为部分国产 ROM 对锁屏
+        // 壁纸有自己的一套实现，合并调用时锁屏失败会连带桌面一起失败。
+        if (wantHome) r.homeOk = apply(ctx, current, WallpaperManager.FLAG_SYSTEM);
+        if (wantLock) r.lockOk = apply(ctx, current, WallpaperManager.FLAG_LOCK);
+
+        if ((wantHome && !r.homeOk) && (wantLock && !r.lockOk)) {
+            throw new Exception("系统拒绝了设置壁纸的请求");
+        }
+
+        SharedPreferences.Editor e = sp.edit()
+            .putString(KEY_LAST_ID, id)
+            .putString(KEY_LAST_TITLE, title == null ? "" : title)
+            .putLong(KEY_LAST_TIME, System.currentTimeMillis())
+            .putString(KEY_LAST_ERROR, "");
+        if (pinDay == null || pinDay.isEmpty()) e.remove(KEY_PIN_DAY);
+        else e.putString(KEY_PIN_DAY, pinDay);
+        e.apply();
+
+        r.ok = true;
+        r.changed = true;
+        return r;
+    }
+
+    /**
+     * 把往期的某一张设成壁纸（网页层滑到非当天，按「设为这张」时调用）。
+     *
+     * @param dayId 调用时必应「今天」那张的 hsh，写进 KEY_PIN_DAY 当固定标记。
+     *              传空的话不固定，下一次周期检查就会把它覆盖掉。
+     */
+    public static Result setSpecific(Context ctx, String urlbase, String id,
+                                     String title, String dayId) {
+        Result r = new Result();
+        SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        r.imageId = id;
+        r.title   = title;
+        try {
+            if (urlbase == null || urlbase.isEmpty()) throw new Exception("没有拿到图片地址");
+            return finish(ctx, sp, r, urlbase, id, title, dayId);
         } catch (Exception e) {
             r.ok = false;
             r.error = e.getMessage() == null ? e.toString() : e.getMessage();
