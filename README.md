@@ -23,6 +23,13 @@
 
 Secret 没配也能跑，只是产出的是随机调试签名，换版本时装不上去、要先卸载。
 
+### JDK 和 Gradle 是绑死的
+
+workflow 里装的是 **JDK 17**，别随手改大。Gradle 8.2.1 最高只支持到 JDK 20，
+用 21 会在配置阶段就报 `Unsupported class file major version 65`，连编译都进不去。
+真要升 JDK，得先把 `android/gradle/wrapper/gradle-wrapper.properties` 里的
+`gradle-8.2.1-all.zip` 换成 8.5 以上，两个一起动。
+
 ## 装好之后第一件事
 
 打开 App → 底部「电池优化设置」和「应用信息 / 自启动」，把这个 App 放行。

@@ -76,6 +76,10 @@ public class WallpaperUpdater {
         Result r = new Result();
         SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
 
+        // 1.0 版留下过一个只写不读的 previous.jpg，升级上来时清掉
+        File stale = new File(ctx.getFilesDir(), "previous.jpg");
+        if (stale.exists()) stale.delete();
+
         try {
             JSONObject img = fetchTodayImage();
             String urlbase = img.optString("urlbase", "");
@@ -102,18 +106,17 @@ public class WallpaperUpdater {
                 return r;
             }
 
-            // 下载到 .tmp 再改名，避免下到一半的图被当成完整壁纸用掉
+            // 下载到 .tmp 再改名，避免下到一半的图被当成完整壁纸用掉。
+            // 中途失败必须把 .tmp 删掉，否则半张图会一直躺在私有目录里。
             File tmp = new File(ctx.getFilesDir(), "current.jpg.tmp");
-            download(hostOf(urlbase) + urlbase + SUFFIX, tmp);
-            if (tmp.length() < 10240) {
+            try {
+                download(HOSTS[0] + urlbase + SUFFIX, tmp);
+                if (tmp.length() < 10240) throw new Exception("下载到的文件过小，可能不是图片");
+            } catch (Exception e) {
                 tmp.delete();
-                throw new Exception("下载到的文件过小，可能不是图片");
+                throw e;
             }
-            if (current.exists()) {
-                File prev = new File(ctx.getFilesDir(), "previous.jpg");
-                if (prev.exists()) prev.delete();
-                current.renameTo(prev);
-            }
+            if (current.exists() && !current.delete()) throw new Exception("旧图片删不掉");
             if (!tmp.renameTo(current)) throw new Exception("保存图片失败");
 
             String target = sp.getString(KEY_TARGET, "both");
@@ -184,11 +187,6 @@ public class WallpaperUpdater {
         throw last == null ? new Exception("无法连接必应") : last;
     }
 
-    /** urlbase 是相对路径，用哪个域名拼都行；跟接口取哪个域名保持一致即可 */
-    private static String hostOf(String urlbase) {
-        return HOSTS[0];
-    }
-
     private static String getText(String url) throws Exception {
         HttpURLConnection conn = open(url);
         InputStreamReader reader = null;
@@ -211,6 +209,7 @@ public class WallpaperUpdater {
         HttpURLConnection conn = open(url);
         InputStream in = null;
         OutputStream out = null;
+        boolean done = false;
         try {
             int code = conn.getResponseCode();
             if (code != 200) throw new Exception("下载图片返回 HTTP " + code);
@@ -220,10 +219,14 @@ public class WallpaperUpdater {
             int n;
             while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
             out.flush();
+            done = true;
         } finally {
             close(in);
             close(out);
             conn.disconnect();
+            // 断网、超时、写盘失败都会走到这里。下到一半的残片不能留在磁盘上，
+            // 否则下次进来 tmp.length() 的体积检查可能被它蒙混过去。
+            if (!done) dest.delete();
         }
     }
 
