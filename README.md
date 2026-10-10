@@ -184,3 +184,13 @@ WebView 不是这个 App 的中心，只是它的设置界面 —— 换壁纸�
 
 直接用浏览器打开 `www/index.html` 会进「浏览器预览模式」，用假数据填充。想看真实
 照片就把 `index.html` 里的 `DEMO_IMG` 填成图片网址。记得用 F12 设备模拟看手机尺寸。
+
+## 许可证 / License
+
+© 2026 Yake（[topukk45-arch](https://github.com/topukk45-arch)）。
+
+本项目以 [PolyForm Noncommercial 1.0.0](LICENSE) 授权：可以自由学习、个人使用和修改，**禁止任何商业用途**。如需商用，请先联系作者。
+
+项目中引用的第三方字体、图标、库及其他素材，仍按其各自的许可证授权。
+
+This project is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). Commercial use is not permitted.
